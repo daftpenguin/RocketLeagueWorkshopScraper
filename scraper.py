@@ -15,6 +15,9 @@ import datetime
 import json
 from random import randint
 from dotenv import load_dotenv
+import subprocess
+import shlex
+import io
 
 # Set these values in a .env file
 load_dotenv()
@@ -23,13 +26,14 @@ BUILD_JSON_PATH = os.getenv("BUILD_JSON_PATH")
 RELEASE_JSON_PATH = os.getenv("RELEASE_JSON_PATH")
 RELEASE_META_JSON_PATH = os.getenv("RELEASE_META_JSON_PATH")
 WORKSHOP_PATH = os.getenv("WORKSHOP_PATH")
+STEAM_WORKSHOP_PATH = os.getenv("STEAM_WORKSHOP_PATH") # Something like: C:\Program Files (x86)\Steam\steamapps\workshop\content\252950
 STEAM_ACCOUNTS = json.loads(os.getenv("STEAM_ACCOUNTS")) # Stored as [ ["login name", "password"], ["login name2", "password2"], ... ]
 DEPOT_DOWNLOADER = os.getenv("DEPOT_DOWNLOADER")
 PAGE_CACHE_PATH = os.getenv("PAGE_CACHE_PATH")
 
 HASH_ALG = "md5"
-MAPS_TO_SKIP = set([ "1567601517", "817001158", "834478221", "2070733495", "941618511" ])
-MOST_RECENT_URL = "https://steamcommunity.com/workshop/browse/?appid=252950&requiredtags%5B0%5D=Maps&actualsort=mostrecent&browsesort=mostrecent&p=1"
+MAPS_TO_SKIP = set([ "1567601517", "817001158", "834478221", "2070733495", "941618511", "2395273453" ])
+MOST_RECENT_URL = "https://steamcommunity.com/workshop/browse/?appid=252950&browsesort=mostrecent&section=items&actualsort=mostrecent&p=1"
 FILEDETAILS_URL = "https://steamcommunity.com/sharedfiles/filedetails/?id={}"
 WORKSHOP_URL = "https://steamcommunity.com/sharedfiles/filedetails/?id="
 MAX_CACHE_AGE = 86400 # One day
@@ -103,6 +107,10 @@ class Scraper:
         self.url = None
         self.steamAccounts = list(STEAM_ACCOUNTS)
         self.pageCache = pageCache
+
+    def __del__(self):
+        print("Killing selenium driver")
+        self.driver.quit()
 
     def getWorkshopIDs(self):
         url = MOST_RECENT_URL
@@ -200,7 +208,7 @@ class Scraper:
         if not doUpdate:
             print(f"No new update for {id}")
             for f in os.listdir(dirPath):
-                if f.endswith(".upk") or f.endswith(".udk"):
+                if f.endswith(".upk") or f.endswith(".udk") or f.endswith('.umap'):
                     return os.path.join(dirPath, f)
             # If this fails, it falls through to update
 
@@ -210,6 +218,32 @@ class Scraper:
             steamIdx = randint(0, len(self.steamAccounts) - 1)
             steamUser, steamPass = self.steamAccounts[steamIdx]
             cmd = DepotDownloaderCommand.format(id, steamUser, steamPass, dirPath)
+
+            process = subprocess.Popen(shlex.split(cmd), stdout=subprocess.PIPE)
+            mapFiles = []
+            lines = []
+            while True:
+                line = process.stdout.readline()
+                if not line or (line == '' and process.poll() is not None):
+                    break
+                if line:
+                    line = line.decode('utf-8').strip()
+                    lines.append(line)
+                    if (".udk" in line or ".upk" in line or ".umap" in line) and WORKSHOP_PATH in line:
+                        mapFiles.append(line[line.find(WORKSHOP_PATH):].replace('\n',''))
+                    elif "RateLimitedExceeded" in line:
+                        self.steamAccounts = self.steamAccounts[:steamIdx] + self.steamAccounts[steamIdx + 1:]
+                    elif "Encountered error" in line and "NotFound" in line:
+                        process.kill()
+                        print(f"ABORTING DOWNLOAD FOR -> {id}. Error: {line}")
+                        return None
+            if len(mapFiles) == 0:
+                print(f"FAILED TO GET MAP FILE FOR -> {id}. Command: {cmd}")
+                print('\n'.join(lines))
+                return None
+            return self.identifyMapFromFiles(mapFiles)
+
+            '''
             stream = os.popen(cmd)
             output = stream.readlines()
             mapFile = None
@@ -221,7 +255,39 @@ class Scraper:
             if mapFile is None:
                 print(f"FAILED TO GET MAP FILE FOR -> {id}. Command: {cmd}")
                 print(''.join(output))
-            return mapFile      
+            return mapFile
+            '''
+
+    def getWorkshopMapFileFromSteamFolder(self, workshopId):
+        dirPath = os.path.join(STEAM_WORKSHOP_PATH, workshopId)
+        print(f"Attempting to copy map file from steam workshop path for: {workshopId}")
+        if os.path.exists(dirPath):
+            mapFiles = [ os.path.join(dirPath, f) for f in filter(lambda x: x.endswith('.udk') or x.endswith('.upk') or x.endwith('.umap'), os.listdir(dirPath)) ]
+            if len(mapFiles) == 0:
+                print(f"FAILED TO GET MAP FILE IN STEAM WORKSHOP PATH FOR -> {workshopId}")
+                return None
+            mapFile = self.identifyMapFromFiles(mapFiles)
+            target = os.path.join(WORKSHOP_PATH, workshopId, os.path.basename(mapFile))
+            if not os.path.exists(mapFile):
+                os.makedirs(os.path.join(WORKSHOP_PATH, workshopId))
+                print(f"Copying file {mapFile} to {target}")
+                shutil.copyfile(mapFile, target)
+            return mapFile
+        else:
+            print(f"FAILED TO LOCATE FOLDER IN STEAM WORKSHOP PATH FOR -> {workshopId}")
+
+
+    def identifyMapFromFiles(self, mapFiles):
+        udks = list(filter(lambda x: ".udk" in x, mapFiles))
+        mapFiles = udks if len(udks) > 0 else mapFiles
+        if len(mapFiles) == 1:
+            return mapFiles[0]
+        largestMapFile = { "file": None, "size": 0 }
+        for f in mapFiles:
+            size = os.path.getsize(f)
+            if size > largestMapFile["size"]:
+                largestMapFile = { "file": f, "size": size }
+        return largestMapFile["file"]
 
 
 class HashDetails:
@@ -443,7 +509,9 @@ def main():
             workshopManager.lastModified = workshopManager.lastCheck
             mapFile = scraper.getWorkshopMapFile(id, hasUpdate)
             if mapFile is None:
-                continue
+                mapFile = scraper.getWorkshopMapFileFromSteamFolder(id)
+                if mapFile is None:
+                    continue
             
             # Add data to workshop manager
             workshopManager.addMapData(id, details, mapFile)
@@ -461,6 +529,14 @@ def main():
             "lastCheck": workshopManager.lastCheck,
             "lastModified": workshopManager.lastModified
         }, fp)
+
+    workshopIds = set(ids)
+    for id in workshopManager.maps:
+        workshopIds.remove(id)
+    for id in MAPS_TO_SKIP:
+        workshopIds.remove(id)
+
+    print("IDs missing from maps.json: \n\t" + "\n\t".join(list(workshopIds)))
 
     print("\n\nScript finished. You can find the final json file in: " + RELEASE_JSON_PATH + "\n\n")
     
