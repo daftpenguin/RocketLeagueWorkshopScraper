@@ -18,6 +18,10 @@ from dotenv import load_dotenv
 import subprocess
 import shlex
 import io
+import time
+from lxml import etree
+import zipfile
+from google_drive_downloader import GoogleDriveDownloader as gdd
 
 # Set these values in a .env file
 load_dotenv()
@@ -36,6 +40,7 @@ MAPS_TO_SKIP = set([ "1567601517", "817001158", "834478221", "2070733495", "9416
 MOST_RECENT_URL = "https://steamcommunity.com/workshop/browse/?appid=252950&browsesort=mostrecent&section=items&actualsort=mostrecent&p=1"
 FILEDETAILS_URL = "https://steamcommunity.com/sharedfiles/filedetails/?id={}"
 WORKSHOP_URL = "https://steamcommunity.com/sharedfiles/filedetails/?id="
+LETHS_MAPS_START_URL = "https://lethamyr.com/mymaps"
 MAX_CACHE_AGE = 86400 # One day
 
 DepotDownloaderCommand = "dotnet " + DEPOT_DOWNLOADER + " -app 252950 -pubfile {} -user {} -password {} -dir {}"
@@ -91,6 +96,17 @@ class PageCache:
 
     def setWorkshopMapPage(self, workshopId, data):
         fpath = os.path.join(PAGE_CACHE_PATH, str(self.cacheTime), workshopId)
+        with open(fpath, 'wb') as fp:
+            fp.write(data.encode('utf-8'))
+
+    def getLethMapPage(self, link):
+        fpath = os.path.join(PAGE_CACHE_PATH, str(self.cacheTime), link[link.rfind('/') + 1: ])
+        if os.path.exists(fpath):
+            with open(fpath, 'r', encoding='utf-8') as fp:
+                return fp.read()
+
+    def setLethMapPage(self, link, data):
+        fpath = os.path.join(PAGE_CACHE_PATH, str(self.cacheTime), link[link.rfind('/') + 1: ])
         with open(fpath, 'wb') as fp:
             fp.write(data.encode('utf-8'))
 
@@ -289,6 +305,100 @@ class Scraper:
                 largestMapFile = { "file": f, "size": size }
         return largestMapFile["file"]
 
+    
+    def getLethMaps(self):
+        url = LETHS_MAPS_START_URL
+        links = []
+        while True:
+            print(f"Retrieving: {url}")
+            sys.stdout.flush()
+
+            self.driver.get(url)
+            time.sleep(5)
+
+            with open('cache_file', 'w') as fout:
+                fout.write(self.driver.page_source)
+
+            soup = BeautifulSoup(self.driver.page_source, "html.parser")
+            articles = soup.findAll('article', { 'class': 'blog-item' })
+            for article in articles:
+                for a in article.findAll('a', { 'class': 'blog-more-link' }):
+                    links.append("https://lethamyr.com" + a['href'])
+
+            pagination = soup.find('nav', { 'class': 'blog-list-pagination' })
+            if pagination is None:
+                print(f"Failed to find pagination in {url}. May have missed some maps.")
+                return links
+            
+            older = pagination.find('div', { 'class': 'older' })
+            if older is None:
+                print(f"Failed to find older posts in {url}. May have missed some maps.")
+                return links
+
+            olderPosts = older.find('a')
+            if olderPosts is None:
+                return links # We should be done if this is missing
+            
+            url = "https://lethamyr.com" + olderPosts["href"]
+    
+
+    def getLethMapDetails(self, link):
+        print("Getting leth map details for: " + link)
+        cacheData = self.pageCache.getLethMapPage(link)
+        soup = None
+        if cacheData is None:
+            self.driver.get(link)
+            time.sleep(2)
+
+            dom = etree.HTML(self.driver.page_source)
+            self.pageCache.setLethMapPage(link, self.driver.page_source)
+        else:
+            print("Retrieved page from cache")
+            dom = etree.HTML(cacheData)
+
+        titleEl = dom.xpath('//h1[@data-content-field="title"]')
+        descEl = dom.xpath('//h3[text()="Description"]/following-sibling::p')
+        downloadLink = dom.xpath('//a[text()="Download"]')
+
+        if len(titleEl) == 0 or len(descEl) == 0 or len(downloadLink) == 0:
+            print(f"FAILED TO GET MAP DETAILS FOR -> {link}")
+            return None
+
+        return { "title": titleEl[0].text, "desc": descEl[0].text, "link": link, "download": downloadLink[0].attrib['href'] }
+
+    
+    def getLethMapFile(self, mapDetails):
+        fileId = mapDetails["download"]
+        fileId = fileId[fileId.rfind("/file/d/") + 8 : fileId.rfind("/")]
+        dest = os.path.join(WORKSHOP_PATH, mapDetails["title"].replace(" ", "-") + ".zip")
+        destFolder = os.path.join(WORKSHOP_PATH, mapDetails["title"])
+
+        if not os.path.exists(dest):
+            gdd.download_file_from_google_drive(file_id=fileId, dest_path=dest, unzip=True)
+
+        # Do folder rename before processing files as the folder might not have been extracted this run
+        if os.path.exists(dest) and not os.path.exists(destFolder):
+            folderName = zipfile.ZipFile(dest).namelist()[0]
+            folderName = folderName[: folderName.find('/')]
+            if folderName != mapDetails["title"]:
+                shutil.move(os.path.join(WORKSHOP_PATH, folderName), destFolder)
+
+        mapFile = None
+        if os.path.exists(destFolder):
+            for f in os.listdir(destFolder):
+                if f.endswith(".udk"):
+                    mapFile = f
+                elif f.endswith(".json"):
+                    with open(os.path.join(destFolder, f)) as fp:
+                        js = json.load(fp)
+                        mapDetails["author"] = js["author"]
+                        mapDetails["desc"] = js["desc"]            
+        
+        if mapFile is None:
+            return None
+        mapDetails["filename"] = mapFile
+        return mapDetails
+
 
 class HashDetails:
 
@@ -353,7 +463,6 @@ class WorkshopMap:
         for f in self.mapFileHistory:
             if f["updateTimestamp"] > latestFile["updateTimestamp"]:
                 latestFile = f
-        print("Max update of " + ", ".join([str(f["updateTimestamp"]) for f in self.mapFileHistory]) + " is " + str(latestFile["updateTimestamp"]))
         return latestFile
 
     def getLastUpdate(self):
@@ -406,6 +515,10 @@ class WorkshopManager:
             self.maps[workshopId] = WorkshopMap(workshopId, details["author"], details["title"], details["desc"], details["published"], [])
         updated = details["published"] if details["lastUpdated"] is None else details["lastUpdated"]
         self.maps[workshopId].addMapFile(mapFile, updated)#, self.hashDetails)
+
+    def addLethMapData(self, details):
+        details["fullHash"] = HashDetails.computeFullHash(os.path.join(WORKSHOP_PATH, details["title"], details["filename"]))
+        self.maps[details["title"]] = details
 
     def getSmallestMapFileSize(self):
         smallest = -1
@@ -489,32 +602,54 @@ def main():
     workshopManager = WorkshopManager.fromJson(BUILD_JSON_PATH)
     workshopManager.lastCheck = int(datetime.datetime.now().timestamp())
     
-    ids = scraper.getWorkshopIDs()
+    ids = []
+    if "skipSteam" not in sys.argv:
+        ids = scraper.getWorkshopIDs()
 
-    print(f"Processing {len(ids)} maps")
+        print(f"Processing {len(ids)} maps")
 
-    for id in ids:
-        if id in MAPS_TO_SKIP:
-            continue
+        for id in ids:
+            if id in MAPS_TO_SKIP:
+                continue
 
-        # Get details
-        sys.stdout.flush()
-        details = scraper.getWorkshopDetails(id)
-        if details is None:
-            continue
+            # Get details
+            sys.stdout.flush()
+            details = scraper.getWorkshopDetails(id)
+            if details is None:
+                continue
 
-        # Get workshop map file
-        hasUpdate = workshopManager.mapHasUpdate(id, details["lastUpdated"])
-        if hasUpdate:
-            workshopManager.lastModified = workshopManager.lastCheck
-            mapFile = scraper.getWorkshopMapFile(id, hasUpdate)
-            if mapFile is None:
-                mapFile = scraper.getWorkshopMapFileFromSteamFolder(id)
+            # Get workshop map file
+            hasUpdate = workshopManager.mapHasUpdate(id, details["lastUpdated"])
+            if hasUpdate:
+                workshopManager.lastModified = workshopManager.lastCheck
+                mapFile = scraper.getWorkshopMapFile(id, hasUpdate)
                 if mapFile is None:
-                    continue
-            
-            # Add data to workshop manager
-            workshopManager.addMapData(id, details, mapFile)
+                    mapFile = scraper.getWorkshopMapFileFromSteamFolder(id)
+                    if mapFile is None:
+                        continue
+                
+                # Add data to workshop manager
+                workshopManager.addMapData(id, details, mapFile)
+
+    lethMapLinks = []
+    if "skipLeth" not in sys.argv:
+        # TODO: Some maps have more than one download (spaceship)
+        lethMapLinks = scraper.getLethMaps()
+
+        print(f"Processing {len(lethMapLinks)} leth maps")
+
+        for link in lethMapLinks:
+            sys.stdout.flush()
+            details = scraper.getLethMapDetails(link)
+            if details is None:
+                continue
+
+            details = scraper.getLethMapFile(details)
+            if details is None:
+                continue
+
+            del details["download"]
+            workshopManager.addLethMapData(details)
 
     # Find segments in map files that produce a unique hash
     #workshopManager.generateUniqueSegmentHashes()
@@ -531,12 +666,18 @@ def main():
         }, fp)
 
     workshopIds = set(ids)
+    lethMapLinksSet = set(lethMapLinks)
     for id in workshopManager.maps:
-        workshopIds.remove(id)
+        map = workshopManager.maps[id]
+        if type(map) is WorkshopMap:
+            workshopIds.discard(id)
+        else:
+            lethMapLinksSet.discard(map["link"])
     for id in MAPS_TO_SKIP:
-        workshopIds.remove(id)
+        workshopIds.discard(id)
 
-    print("IDs missing from maps.json: \n\t" + "\n\t".join(list(workshopIds)))
+    print("Workshop IDs missing from maps.json: \n\t" + "\n\t".join(list(workshopIds)))
+    print("\n\nLeth maps missing from maps.json: \n\t" + "\n\t".join(list(lethMapLinksSet)))
 
     print("\n\nScript finished. You can find the final json file in: " + RELEASE_JSON_PATH + "\n\n")
     
