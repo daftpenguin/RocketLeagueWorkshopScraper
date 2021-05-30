@@ -45,6 +45,10 @@ MAX_CACHE_AGE = 86400 # One day
 
 DepotDownloaderCommand = "dotnet " + DEPOT_DOWNLOADER + " -app 252950 -pubfile {} -user {} -password {} -dir {}"
 
+def clean_path(string):
+    for c in ":*\"/\\[];|,":
+        string = string.replace(c, '')
+    return string
 
 def clean_str(string):
     return str(re.sub(r"^\s+", '', string))
@@ -370,8 +374,8 @@ class Scraper:
     def getLethMapFile(self, mapDetails):
         fileId = mapDetails["download"]
         fileId = fileId[fileId.rfind("/file/d/") + 8 : fileId.rfind("/")]
-        dest = os.path.join(WORKSHOP_PATH, mapDetails["title"].replace(" ", "-") + ".zip")
-        destFolder = os.path.join(WORKSHOP_PATH, mapDetails["title"])
+        dest = os.path.join(WORKSHOP_PATH, clean_path(mapDetails["title"].replace(" ", "-")) + ".zip")
+        destFolder = os.path.join(WORKSHOP_PATH, clean_path(mapDetails["title"]))
 
         if not os.path.exists(dest):
             gdd.download_file_from_google_drive(file_id=fileId, dest_path=dest, unzip=True)
@@ -380,7 +384,7 @@ class Scraper:
         if os.path.exists(dest) and not os.path.exists(destFolder):
             folderName = zipfile.ZipFile(dest).namelist()[0]
             folderName = folderName[: folderName.find('/')]
-            if folderName != mapDetails["title"]:
+            if folderName != clean_path(mapDetails["title"]):
                 shutil.move(os.path.join(WORKSHOP_PATH, folderName), destFolder)
 
         mapFile = None
@@ -517,7 +521,7 @@ class WorkshopManager:
         self.maps[workshopId].addMapFile(mapFile, updated)#, self.hashDetails)
 
     def addLethMapData(self, details):
-        details["fullHash"] = HashDetails.computeFullHash(os.path.join(WORKSHOP_PATH, details["title"], details["filename"]))
+        details["fullHash"] = HashDetails.computeFullHash(os.path.join(WORKSHOP_PATH, clean_path(details["title"]), details["filename"]))
         self.maps[details["title"]] = details
 
     def getSmallestMapFileSize(self):
