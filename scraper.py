@@ -4,8 +4,10 @@ import re
 import selenium
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
-from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.firefox.firefox_binary import FirefoxBinary
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
 import jsonpickle
@@ -44,6 +46,12 @@ LETHS_MAPS_START_URL = "https://lethamyr.com/mymaps"
 MAX_CACHE_AGE = 86400 # One day
 
 DepotDownloaderCommand = "dotnet " + DEPOT_DOWNLOADER + " -app 252950 -pubfile {} -user {} -password {} -dir {}"
+
+# Make sure some paths exist
+os.makedirs(os.path.dirname(BUILD_JSON_PATH), exist_ok=True)
+os.makedirs(os.path.dirname(RELEASE_JSON_PATH), exist_ok=True)
+os.makedirs(os.path.dirname(RELEASE_META_JSON_PATH), exist_ok=True)
+os.makedirs(PAGE_CACHE_PATH, exist_ok=True)
 
 def clean_path(string):
     for c in ":*\"/\\[];|,":
@@ -118,12 +126,21 @@ class PageCache:
 class Scraper:
 
     def __init__(self, pageCache):        
-        options = Options()
-        options.add_argument('--log-level=3')
-        options.headless = True
-        self.driver = selenium.webdriver.Chrome(
-            options=options,
-            executable_path=(CHROME_DRIVER))
+        if 'chrome' in CHROME_DRIVER:
+            chrome_options = selenium.webdriver.ChromeOptions()
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--headless')
+            chrome_options.add_argument('--disable-gpu')
+            self.driver = selenium.webdriver.Chrome(chrome_options=chrome_options)
+        elif 'gecko' in CHROME_DRIVER:
+            #options = FirefoxOptions()
+            #options.add_argument("--headless")
+            #options.binary_location = "./"
+            #self.driver = selenium.webdriver.Firefox(
+            #    options=options)
+            options = FirefoxOptions()
+            options.add_argument('--headless')
+            self.driver = selenium.webdriver.Firefox(firefox_binary=FirefoxBinary('/workshop-maps/geckodriver'), firefox_options=options)
         self.url = None
         self.steamAccounts = list(STEAM_ACCOUNTS)
         self.pageCache = pageCache
@@ -349,7 +366,6 @@ class Scraper:
     def getLethMapDetails(self, link):
         print("Getting leth map details for: " + link)
         cacheData = self.pageCache.getLethMapPage(link)
-        soup = None
         if cacheData is None:
             self.driver.get(link)
             time.sleep(2)
@@ -508,10 +524,13 @@ class WorkshopManager:
 
     def mapHasUpdate(self, workshopId, lastUpdate):
         if workshopId not in self.maps:
+            print("workshopId not in maps")
             return True
         lastUpdateDownloaded = self.maps[workshopId].getLastUpdate()
         if lastUpdateDownloaded is None:
+            print("lastUpdateDownloaded is None")
             return True
+        print(f"comparing {lastUpdateDownloaded} < {lastUpdate}: {lastUpdateDownloaded < lastUpdate}")
         return lastUpdateDownloaded < lastUpdate
 
     def addMapData(self, workshopId, details, mapFile):
@@ -624,6 +643,7 @@ def main():
 
             # Get workshop map file
             hasUpdate = workshopManager.mapHasUpdate(id, details["lastUpdated"])
+            hasUpdate = False
             if hasUpdate:
                 workshopManager.lastModified = workshopManager.lastCheck
                 mapFile = scraper.getWorkshopMapFile(id, hasUpdate)
