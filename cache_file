@@ -2,7 +2,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- This is Squarespace. --><!-- lethamyr -->
-<div id="powrIframeLoader">­<style> .powrLoaded iframe { visibility: hidden; } </style></div><script charset="utf-8" id="yui_3_17_2_1_1622621114031_64" src="//assets.squarespace.com/universal/scripts-compressed/search-preview-7182482593c51eebbb234-min.en-US.js"></script><base href="">
+<div id="powrIframeLoader">­<style> .powrLoaded iframe { visibility: hidden; } </style></div><script charset="utf-8" id="yui_3_17_2_1_1622621505622_64" src="//assets.squarespace.com/universal/scripts-compressed/search-preview-7182482593c51eebbb234-min.en-US.js"></script><base href="">
 <meta charset="utf-8">
 <title>My Maps — Lethamyr</title>
 <link rel="shortcut icon" type="image/x-icon" href="https://images.squarespace-cdn.com/content/v1/5f17a7d895716766662f1c20/1602925360508-A4S5V4KNJ9A3OJL9IZTN/ke17ZwdGBToddI8pDm48kLXCf88_9uNTKXkq27cF4sB7gQa3H78H3Y0txjaiv_0fDoOvxcdMmMKkDsyUqMSsMWxHk725yiiHCCLfrh8O1z5QHyNOqBUUEtDDsRWrJLTmwbA6upbL5Bu97tJociXJklKprRMdH2Tl4F1PjaoPT3YUs5wkl5ojCV1O900UJ7ME/favicon.ico?format=100w">
@@ -46,7 +46,7 @@
           
         
       
-     seven-one-global-animations" tabindex="-1" data-mobile-header-editing="true" data-menu-overlay-theme-switcher="true" data-controllers-bound="Flags" data-animation-state="booted"><div id="yui_3_17_2_1_1622621114031_109" class="yui3-widget sqs-widget yui3-searchpreviewdropdown yui3-widget-positioned" style="position: relative; left: 16px; top: 209px;"><div id="yui_3_17_2_1_1622621114031_111" class="yui3-searchpreviewdropdown-content sqs-search-preview-ui" hidden="hidden" style="width: 753px; display: none;"><div class="sqs-search-preview-ui"><div class="sqs-search-ui-result"><div class="search-result-notice">No results found.</div><div class="sqs-search-ui-list"><div class="search-results"></div></div></div></div></div></div>
+     seven-one-global-animations" tabindex="-1" data-mobile-header-editing="true" data-menu-overlay-theme-switcher="true" data-controllers-bound="Flags" data-animation-state="booted"><div id="yui_3_17_2_1_1622621505622_109" class="yui3-widget sqs-widget yui3-searchpreviewdropdown yui3-widget-positioned" style="position: relative; left: 16px; top: 209px;"><div id="yui_3_17_2_1_1622621505622_111" class="yui3-searchpreviewdropdown-content sqs-search-preview-ui" hidden="hidden" style="width: 753px; display: none;"><div class="sqs-search-preview-ui"><div class="sqs-search-ui-result"><div class="search-result-notice">No results found.</div><div class="sqs-search-ui-list"><div class="search-results"></div></div></div></div></div></div>
     <div id="siteWrapper" class="clearfix site-wrapper">
       
         <div class="floating-cart hidden" data-controller="FloatingCart" data-controllers-bound="FloatingCart">
@@ -1097,10 +1097,10 @@
       
       <div class="sqs-layout sqs-grid-12 columns-12" data-type="page-section" id="page-section-5f8db645b84bdf5febe3a49b"><div class="row sqs-row"><div class="col sqs-col-12 span-12"><div class="sqs-block search-block sqs-block-search" data-block-type="33" id="block-yui_3_17_2_1_1603122742378_4669"><div class="sqs-block-content">
 
-<div class="sqs-search-ui-text-input sqs-search-ui-button-wrapper color-light" data-source="block" data-preview="true" data-collection="5f6a93a270018d1cbf787b25" id="yui_3_17_2_1_1622621114031_87">
-  <div class="spinner-wrapper" id="yui_3_17_2_1_1622621114031_212" hidden="hidden" style="display: none;"></div>
+<div class="sqs-search-ui-text-input sqs-search-ui-button-wrapper color-light" data-source="block" data-preview="true" data-collection="5f6a93a270018d1cbf787b25" id="yui_3_17_2_1_1622621505622_87">
+  <div class="spinner-wrapper" id="yui_3_17_2_1_1622621505622_212" hidden="hidden" style="display: none;"></div>
   <input type="search" class="search-input hover-effect" value="" placeholder="Search" aria-label="Search">
-<div id="yui_3_17_2_1_1622621114031_92" class="yui3-widget sqs-widget sqs-search-preview"><div id="yui_3_17_2_1_1622621114031_94" class="sqs-search-preview-content"></div></div></div>
+<div id="yui_3_17_2_1_1622621505622_92" class="yui3-widget sqs-widget sqs-search-preview"><div id="yui_3_17_2_1_1622621505622_94" class="sqs-search-preview-content"></div></div></div>
 </div></div></div></div></div>
     </div>
   </div>
