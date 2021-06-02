@@ -524,13 +524,10 @@ class WorkshopManager:
 
     def mapHasUpdate(self, workshopId, lastUpdate):
         if workshopId not in self.maps:
-            print("workshopId not in maps")
             return True
         lastUpdateDownloaded = self.maps[workshopId].getLastUpdate()
         if lastUpdateDownloaded is None:
-            print("lastUpdateDownloaded is None")
             return True
-        print(f"comparing {lastUpdateDownloaded} < {lastUpdate}: {lastUpdateDownloaded < lastUpdate}")
         return lastUpdateDownloaded < lastUpdate
 
     def addMapData(self, workshopId, details, mapFile):
@@ -643,7 +640,6 @@ def main():
 
             # Get workshop map file
             hasUpdate = workshopManager.mapHasUpdate(id, details["lastUpdated"])
-            hasUpdate = False
             if hasUpdate:
                 workshopManager.lastModified = workshopManager.lastCheck
                 mapFile = scraper.getWorkshopMapFile(id, hasUpdate)
