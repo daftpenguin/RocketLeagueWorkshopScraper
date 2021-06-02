@@ -704,6 +704,8 @@ def main():
     print("\n\nLeth maps missing from maps.json: \n\t" + "\n\t".join(list(lethMapLinksSet)))
 
     print("\n\nScript finished. You can find the final json file in: " + RELEASE_JSON_PATH + "\n\n")
+
+    os.system("./git-update.sh")
     
 
 if __name__ == "__main__":
