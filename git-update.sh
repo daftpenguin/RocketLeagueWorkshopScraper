@@ -1,5 +1,7 @@
 #!/bin/bash
 
+d=`date +%s`
+
 untracked=`git ls-files --other --exclude-standard --directory | egrep -v '/$' | wc -l`
 if (( untracked > 0)); then
     git add --all
