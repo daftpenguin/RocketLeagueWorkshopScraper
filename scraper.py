@@ -343,9 +343,6 @@ class Scraper:
             self.driver.get(url)
             time.sleep(5)
 
-            with open('cache_file', 'w') as fout:
-                fout.write(self.driver.page_source)
-
             soup = BeautifulSoup(self.driver.page_source, "html.parser")
             articles = soup.findAll('article', { 'class': 'blog-item' })
             for article in articles:
