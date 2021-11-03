@@ -1,13 +1,7 @@
 import os
 import sys
 import re
-import selenium
-from dotenv import load_dotenv
 from bs4 import BeautifulSoup
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.common.by import By
 import jsonpickle
 import shutil
 import hashlib
@@ -22,6 +16,20 @@ import time
 from lxml import etree
 import zipfile
 from google_drive_downloader import GoogleDriveDownloader as gdd
+from dotenv import load_dotenv
+import platform
+
+import selenium
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.common.by import By
+
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.firefox.firefox_binary import FirefoxBinary
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
+
+
+IS_WINDOWS = platform.system() == "Windows"
 
 # Set these values in a .env file
 load_dotenv()
@@ -123,13 +131,22 @@ class PageCache:
 
 class Scraper:
 
-    def __init__(self, pageCache):        
-        options = Options()
-        options.add_argument('--log-level=3')
-        options.headless = True
-        self.driver = selenium.webdriver.Chrome(
-            options=options,
-            executable_path=(CHROME_DRIVER))
+    def __init__(self, pageCache):     
+        if 'chrome' in CHROME_DRIVER:
+            chrome_options = selenium.webdriver.ChromeOptions()
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--headless')
+            chrome_options.add_argument('--disable-gpu')
+            self.driver = selenium.webdriver.Chrome(chrome_options=chrome_options)
+        elif 'gecko' in CHROME_DRIVER:
+            #options = FirefoxOptions()
+            #options.add_argument("--headless")
+            #options.binary_location = "./"
+            #self.driver = selenium.webdriver.Firefox(
+            #    options=options)
+            options = FirefoxOptions()
+            options.add_argument('--headless')
+            self.driver = selenium.webdriver.Firefox(firefox_binary=FirefoxBinary('/workshop-maps/geckodriver'), firefox_options=options)
         self.url = None
         self.steamAccounts = list(STEAM_ACCOUNTS)
         self.pageCache = pageCache
@@ -174,7 +191,6 @@ class Scraper:
     def getWorkshopDetails(self, id):
         print("Getting workshop details for: " + str(id))
         cacheData = self.pageCache.getWorkshopMapPage(id)
-        soup = None
         if cacheData is None:
             self.driver.get(FILEDETAILS_URL.format(id))
             try:
@@ -599,7 +615,7 @@ class WorkshopManager:
     '''
 
 
-def main():
+def main(successScript):
     print("\n\nTHIS SCRIPT ISN'T VERY USER FRIENDLY AND I WOULDN'T CONSIDER IT A \"RELEASE\" VERSION.")
     print("PLEASE READ IF THIS IS YOUR FIRST TIME RUNNING THIS.")
     print("When using DepotDownloader for the first time with a steam account, you will likely need to provide an authentication code.")
@@ -692,8 +708,12 @@ def main():
 
     print("\n\nScript finished. You can find the final json file in: " + RELEASE_JSON_PATH + "\n\n")
 
-    #os.system("./git-update.sh")
+    if (successScript):
+        os.system(successScript)
     
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1:
+        main(sys.argv[1])
+    else:
+        main(None)
