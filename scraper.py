@@ -4,10 +4,8 @@ import re
 import selenium
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
-from selenium.webdriver.firefox.options import Options as FirefoxOptions
-from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.firefox.firefox_binary import FirefoxBinary
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
 import jsonpickle
@@ -48,10 +46,10 @@ MAX_CACHE_AGE = 86400 # One day
 DepotDownloaderCommand = "dotnet " + DEPOT_DOWNLOADER + " -app 252950 -pubfile {} -user {} -password {} -dir {}"
 
 # Make sure some paths exist
-os.makedirs(os.path.dirname(BUILD_JSON_PATH), exist_ok=True)
-os.makedirs(os.path.dirname(RELEASE_JSON_PATH), exist_ok=True)
-os.makedirs(os.path.dirname(RELEASE_META_JSON_PATH), exist_ok=True)
-os.makedirs(PAGE_CACHE_PATH, exist_ok=True)
+if not os.path.exists(os.path.dirname(BUILD_JSON_PATH)): os.makedirs(os.path.dirname(BUILD_JSON_PATH))
+if not os.path.exists(os.path.dirname(RELEASE_JSON_PATH)): os.makedirs(os.path.dirname(RELEASE_JSON_PATH))
+if not os.path.exists(os.path.dirname(RELEASE_META_JSON_PATH)): os.makedirs(os.path.dirname(RELEASE_META_JSON_PATH))
+if not os.path.exists(PAGE_CACHE_PATH): os.makedirs(PAGE_CACHE_PATH)
 
 def clean_path(string):
     for c in ":*\"/\\[];|,":
@@ -126,21 +124,12 @@ class PageCache:
 class Scraper:
 
     def __init__(self, pageCache):        
-        if 'chrome' in CHROME_DRIVER:
-            chrome_options = selenium.webdriver.ChromeOptions()
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--headless')
-            chrome_options.add_argument('--disable-gpu')
-            self.driver = selenium.webdriver.Chrome(chrome_options=chrome_options)
-        elif 'gecko' in CHROME_DRIVER:
-            #options = FirefoxOptions()
-            #options.add_argument("--headless")
-            #options.binary_location = "./"
-            #self.driver = selenium.webdriver.Firefox(
-            #    options=options)
-            options = FirefoxOptions()
-            options.add_argument('--headless')
-            self.driver = selenium.webdriver.Firefox(firefox_binary=FirefoxBinary('/workshop-maps/geckodriver'), firefox_options=options)
+        options = Options()
+        options.add_argument('--log-level=3')
+        options.headless = True
+        self.driver = selenium.webdriver.Chrome(
+            options=options,
+            executable_path=(CHROME_DRIVER))
         self.url = None
         self.steamAccounts = list(STEAM_ACCOUNTS)
         self.pageCache = pageCache
@@ -199,7 +188,6 @@ class Scraper:
             soup = BeautifulSoup(self.driver.page_source, "html.parser")
             self.pageCache.setWorkshopMapPage(id, self.driver.page_source)
         else:
-            print("Retrieved page from cache")
             soup = BeautifulSoup(cacheData, "html.parser")
         
         author_element = soup.find('div', {'class':'friendBlockContent'})
@@ -259,15 +247,17 @@ class Scraper:
             process = subprocess.Popen(shlex.split(cmd), stdout=subprocess.PIPE)
             mapFiles = []
             lines = []
+            
+            unescapedWorkshopPath = WORKSHOP_PATH.replace('\\\\', '\\')
             while True:
                 line = process.stdout.readline()
                 if not line or (line == '' and process.poll() is not None):
                     break
                 if line:
-                    line = line.decode('utf-8').strip()
+                    line = line.decode('iso-8859-1').strip()
                     lines.append(line)
-                    if (".udk" in line or ".upk" in line or ".umap" in line) and WORKSHOP_PATH in line:
-                        mapFiles.append(line[line.find(WORKSHOP_PATH):].replace('\n',''))
+                    if (".udk" in line or ".upk" in line or ".umap" in line) and unescapedWorkshopPath in line:
+                        mapFiles.append(line[line.find(unescapedWorkshopPath):].replace('\n',''))
                     elif "RateLimitedExceeded" in line:
                         self.steamAccounts = self.steamAccounts[:steamIdx] + self.steamAccounts[steamIdx + 1:]
                     elif "Encountered error" in line and "NotFound" in line:
@@ -276,7 +266,7 @@ class Scraper:
                         return None
             if len(mapFiles) == 0:
                 print(f"FAILED TO GET MAP FILE FOR -> {id}. Command: {cmd}")
-                print('\n'.join(lines))
+                print('\n'.join(lines).encode('utf-8', errors='ignore'))
                 return None
             return self.identifyMapFromFiles(mapFiles)
 
@@ -299,7 +289,7 @@ class Scraper:
         dirPath = os.path.join(STEAM_WORKSHOP_PATH, workshopId)
         print(f"Attempting to copy map file from steam workshop path for: {workshopId}")
         if os.path.exists(dirPath):
-            mapFiles = [ os.path.join(dirPath, f) for f in filter(lambda x: x.endswith('.udk') or x.endswith('.upk') or x.endwith('.umap'), os.listdir(dirPath)) ]
+            mapFiles = [ os.path.join(dirPath, f) for f in filter(lambda x: x.endswith('.udk') or x.endswith('.upk') or x.endswith('.umap'), os.listdir(dirPath)) ]
             if len(mapFiles) == 0:
                 print(f"FAILED TO GET MAP FILE IN STEAM WORKSHOP PATH FOR -> {workshopId}")
                 return None
@@ -366,6 +356,7 @@ class Scraper:
     def getLethMapDetails(self, link):
         print("Getting leth map details for: " + link)
         cacheData = self.pageCache.getLethMapPage(link)
+        soup = None
         if cacheData is None:
             self.driver.get(link)
             time.sleep(2)
@@ -373,12 +364,11 @@ class Scraper:
             dom = etree.HTML(self.driver.page_source)
             self.pageCache.setLethMapPage(link, self.driver.page_source)
         else:
-            print("Retrieved page from cache")
             dom = etree.HTML(cacheData)
 
         titleEl = dom.xpath('//h1[@data-content-field="title"]')
         descEl = dom.xpath('//h3[text()="Description"]/following-sibling::p')
-        downloadLink = dom.xpath('//a[text()="Download"]')
+        downloadLink = dom.xpath('//a[normalize-space(text())="Download"]')
 
         if len(titleEl) == 0 or len(descEl) == 0 or len(downloadLink) == 0:
             print(f"FAILED TO GET MAP DETAILS FOR -> {link}")
@@ -527,6 +517,7 @@ class WorkshopManager:
             return True
         lastUpdateDownloaded = self.maps[workshopId].getLastUpdate()
         if lastUpdateDownloaded is None:
+            print("lastUpdateDownloaded is None")
             return True
         return lastUpdateDownloaded < lastUpdate
 
@@ -701,7 +692,7 @@ def main():
 
     print("\n\nScript finished. You can find the final json file in: " + RELEASE_JSON_PATH + "\n\n")
 
-    os.system("./git-update.sh")
+    #os.system("./git-update.sh")
     
 
 if __name__ == "__main__":
